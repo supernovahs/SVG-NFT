@@ -1,5 +1,13 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.9;
+pragma solidity 0.8.10;
+
+library Weather {
+    function getId(uint256 _locationKey) internal view returns (uint256) {
+        if (_locationKey == 197700) {
+            return (1);
+        }
+    }
+}
 
 import "@chainlink/contracts/src/v0.8/ChainlinkClient.sol";
 
@@ -73,6 +81,9 @@ import "@chainlink/contracts/src/v0.8/ChainlinkClient.sol";
 contract AccuweatherConsumer is ChainlinkClient {
     using Chainlink for Chainlink.Request;
 
+    using Weather for uint256;
+    bytes32 public reqId;
+
     /* ========== CONSUMER STATE VARIABLES ========== */
 
     struct RequestParams {
@@ -108,6 +119,11 @@ contract AccuweatherConsumer is ChainlinkClient {
     mapping(bytes32 => LocationResult) public requestIdLocationResult;
     mapping(bytes32 => RequestParams) public requestIdRequestParams;
 
+    mapping(uint256 => uint8) internal IdtoWeather;
+    mapping(bytes32 => uint8) internal ReqIdtoId;
+
+    mapping(uint256 => uint8) public IdtoLatestWeather;
+
     /* ========== CONSTRUCTOR ========== */
 
     /**
@@ -124,29 +140,23 @@ contract AccuweatherConsumer is ChainlinkClient {
     /**
      * @notice Returns the location information for the given coordinates.
      * @param _payment the LINK amount in Juels (i.e. 10^18 aka 1 LINK).
-     * @param _lat the latitude (WGS84 standard, from -90 to 90).
-     * @param _lon the longitude (WGS84 standard, from -180 to 180).
-     */
-    function requestLocation(
-        uint256 _payment,
-        string calldata _lat,
-        string calldata _lon
-    ) public {
-        Chainlink.Request memory req = buildChainlinkRequest(
-            "d67df9cb479e4b2e897f2769d1b0ff8e",
-            address(this),
-            this.fulfillLocation.selector
-        );
+    //  */
+    // function requestLocation(
+    //     uint id,
+    //     uint256 _payment
+    // ) public {
 
-        req.add("endpoint", "location"); // NB: not required if it has been hardcoded in the job spec
-        req.add("lat", _lat);
-        req.add("lon", _lon);
+    //     (string memory lat, string memory lon) = getter(id);
+    //     Chainlink.Request memory req = buildChainlinkRequest("d67df9cb479e4b2e897f2769d1b0ff8e", address(this), this.fulfillLocation.selector);
+    //     req.add("endpoint", "location"); // NB: not required if it has been hardcoded in the job spec
+    //     req.add("lat", lat);
+    //     req.add("lon", lon);
 
-        bytes32 requestId = sendChainlinkRequest(req, _payment);
+    //     bytes32 requestId = sendChainlinkRequest(req, _payment);
 
-        // Below this line is just an example of usage
-        storeRequestParams(requestId, 0, "location", _lat, _lon, "");
-    }
+    //     // Below this line is just an example of usage
+    //     storeRequestParams(requestId, 0, "location", lat, lon, "");
+    // }
 
     /**
      * @notice Returns the current weather conditions of a location by ID.
@@ -169,17 +179,45 @@ contract AccuweatherConsumer is ChainlinkClient {
         req.addUint("locationKey", _locationKey);
         req.add("units", _units);
 
-        bytes32 requestId = sendChainlinkRequest(req, _payment);
+        reqId = sendChainlinkRequest(req, _payment);
+        uint256 ids = _locationKey.getId();
+        update(ids);
 
         // Below this line is just an example of usage
         storeRequestParams(
-            requestId,
+            reqId,
             _locationKey,
             "current-conditions",
             "0",
             "0",
             _units
         );
+    }
+
+    function weatherbyId(uint256 _id) external view returns (uint8) {
+        return IdtoLatestWeather[_id];
+    }
+
+    function update(uint256 _id) internal {
+        if (requestIdCurrentConditionsResult[reqId].precipitationType == 0) {
+            IdtoLatestWeather[_id] = 0;
+        } else if (
+            requestIdCurrentConditionsResult[reqId].precipitationType == 1
+        ) {
+            IdtoLatestWeather[_id] = 1;
+        } else if (
+            requestIdCurrentConditionsResult[reqId].precipitationType == 2
+        ) {
+            IdtoLatestWeather[_id] = 2;
+        } else if (
+            requestIdCurrentConditionsResult[reqId].precipitationType == 3
+        ) {
+            IdtoLatestWeather[_id] = 3;
+        } else if (
+            requestIdCurrentConditionsResult[reqId].precipitationType == 4
+        ) {
+            IdtoLatestWeather[_id] = 4;
+        }
     }
 
     /**
@@ -189,6 +227,7 @@ contract AccuweatherConsumer is ChainlinkClient {
      * @param _lon the longitude (WGS84 standard, from -180 to 180).
      * @param _units the measurement system ("metric" or "imperial").
      */
+
     function requestLocationCurrentConditions(
         uint256 _payment,
         string calldata _lat,
